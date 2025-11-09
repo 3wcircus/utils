@@ -1,0 +1,5 @@
+# VPX Cleaner - VPX files and generated reports
+*.vpx
+*_removal_list_*.txt
+*_backup_*.vpx
+*_cleaned.vpx
