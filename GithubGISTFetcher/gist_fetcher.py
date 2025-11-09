@@ -4,9 +4,9 @@ from collections import Counter
 
 # === CONFIG ===
 USERNAME = "3wcircus"
-START_DATE = "2025-11-06"
+START_DATE = "2025-11-08"
 END_DATE = "2025-11-08"
-SHOW_FILENAMES = False  # Set to False to only show URLs
+SHOW_FILENAMES = True  # Set to False to only show URLs
 SORT_BY = "name"  # Options: "date" (most recent first) or "name" (alphabetical by first filename)
 
 # === FETCH GISTS ===
