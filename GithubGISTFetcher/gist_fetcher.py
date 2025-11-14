@@ -13,6 +13,9 @@ SHOW_FILENAMES = True  # Set to False to only show URLs
 SORT_BY = "name"  # Options: "date" (most recent first) or "name" (alphabetical by first filename)
 REMOVE_DUPLICATES = False  # Set to True to keep only the most recently updated gist for duplicate filenames
 
+# Remove any hardcoded GitHub personal access token from this file.
+# Store secrets in a separate file (e.g., secrets.dart) and do not commit them to version control.
+
 # === FETCH GISTS ===
 def fetch_gists(username):
     gists = []
@@ -423,7 +426,7 @@ Examples:
     parser.add_argument("--remove-duplicates", action="store_true", default=REMOVE_DUPLICATES,
                         help="Delete duplicate gists from GitHub, keeping most recent (requires --token)")
     parser.add_argument("--project-dir", help="Local project directory to sync with gists")
-    parser.add_argument("--token", default="***REMOVED***", help="GitHub personal access token (required for syncing/deleting)")
+    parser.add_argument("--token", help="GitHub personal access token (required for syncing/deleting)")
     parser.add_argument("--force", action="store_true", help="Skip confirmation prompts for deletion and updates")
     parser.add_argument("--create-missing", action="store_true", help="Create new gists for files without existing gists")
     parser.add_argument("--file-pattern", help="File pattern for creating gists (e.g., *.dart, *.py)")
