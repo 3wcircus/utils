@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isScanning = false;
   List<String> _selectedDirectories = [];
   bool _scanAllDrives = false;
-  int _collectedFileCount = 0;
+  // int _collectedFileCount = 0; // Removed, not used
 
   @override
   void initState() {
@@ -36,11 +36,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _finderService.onStatusUpdate = (status) {
       setState(() {
         _status = status;
-        final match = RegExp(r'Found (\d+) files').firstMatch(status);
-        if (match != null) {
-          _collectedFileCount = int.parse(match.group(1)!);
-        }
+        // Removed _collectedFileCount logic
       });
+      // Log status changes for better feedback
+      AppLogger.info(status);
     };
     _finderService.onProgressUpdate = (progress) {
       setState(() => _progress = progress);
@@ -109,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _isScanning = true;
       _progress = 0.0;
       _duplicateGroups.clear();
-      _collectedFileCount = 0;
+      // Removed _collectedFileCount reset
     });
     try {
       final minSize = int.tryParse(_fileSizeController.text) ?? 0;
@@ -345,61 +344,68 @@ class _HomeScreenState extends State<HomeScreen> {
             formatSize: _finderService.formatSize,
           ),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue[50],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Status', style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    if (_isScanning && _progress == 0.0)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    Expanded(
-                      child: Text(
-                        _isScanning && _status.contains('Collecting files')
-                            ? 'Collecting files... (this may take a while)'
-                            : _status,
-                        style: TextStyle(
-                          fontWeight: _isScanning
-                              ? FontWeight.w500
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                    if (_isScanning && _status.contains('Collecting files'))
-                      Padding(
-                        padding: const EdgeInsets.only(left: 12),
-                        child: Text(
-                          'Files: $_collectedFileCount',
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                  ],
+          _buildStatusPanel(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusPanel() {
+    final lastLog = AppLogger.instance.history.isNotEmpty
+        ? AppLogger.instance.history.last.message
+        : '';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Status', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (_isScanning && _progress == 0.0)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
-                if (_isScanning && _progress > 0.0) ...[
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(value: _progress),
-                ],
-                const SizedBox(height: 8),
-                ExpansionTile(
-                  title: const Text('Details'),
-                  children: [SizedBox(height: 180, child: _buildLogDetails())],
+              Expanded(
+                child: Text(
+                  _isScanning && _status.contains('Collecting files')
+                      ? 'Collecting files... (this may take a while)'
+                      : _status,
+                  style: TextStyle(
+                    fontWeight: _isScanning
+                        ? FontWeight.w500
+                        : FontWeight.normal,
+                  ),
                 ),
-              ],
+              ),
+            ],
+          ),
+          if (_isScanning && _progress > 0.0) ...[
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: _progress),
+          ],
+          const SizedBox(height: 8),
+          if (lastLog != null && lastLog.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                'Last log: $lastLog',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
             ),
+          ExpansionTile(
+            title: const Text('Details'),
+            children: [SizedBox(height: 180, child: _buildLogDetails())],
           ),
         ],
       ),
@@ -464,36 +470,37 @@ class _HomeScreenState extends State<HomeScreen> {
                           (sum, g) => sum + g.oldFiles.length,
                         );
                         int currentDeleted = 0;
-                        // Show progress dialog
-                        showDialog(
+                        // Show progress dialog and update it
+                        await showDialog(
                           context: context,
                           barrierDismissible: false,
-                          builder: (context) => StatefulBuilder(
-                            builder: (context, setDialogState) {
-                              return AlertDialog(
-                                title: const Text('Deleting Duplicates'),
-                                content: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text(
-                                      'Deleting old duplicate files...',
-                                    ),
-                                    const SizedBox(height: 16),
-                                    LinearProgressIndicator(
-                                      value: totalToDelete > 0
-                                          ? currentDeleted / totalToDelete
-                                          : null,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      '$currentDeleted / $totalToDelete deleted',
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
+                          builder: (context) {
+                            return StatefulBuilder(
+                              builder: (context, setDialogState) {
+                                return AlertDialog(
+                                  title: const Text('Deleting Duplicates'),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('Deleting old duplicate files...'),
+                                      const SizedBox(height: 16),
+                                      LinearProgressIndicator(
+                                        value: totalToDelete > 0
+                                            ? currentDeleted / totalToDelete
+                                            : null,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '$currentDeleted / $totalToDelete deleted',
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         );
+                        // Actual deletion loop
                         for (final group in List<DuplicateGroup>.from(
                           _duplicateGroups,
                         )) {
@@ -508,14 +515,46 @@ class _HomeScreenState extends State<HomeScreen> {
                                 path,
                               );
                               await Future.delayed(
-                                Duration(milliseconds: 1),
+                                const Duration(milliseconds: 10),
                               ); // Yield to event loop
+                              success ? successCount++ : failCount++;
                               currentDeleted++;
                               // Update progress dialog
-                              if (Navigator.of(context).canPop()) {
-                                setState(() {});
-                              }
-                              success ? successCount++ : failCount++;
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (context) {
+                                  return StatefulBuilder(
+                                    builder: (context, setDialogState) {
+                                      setDialogState(() {});
+                                      return AlertDialog(
+                                        title: const Text(
+                                          'Deleting Duplicates',
+                                        ),
+                                        content: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              'Deleting old duplicate files...',
+                                            ),
+                                            const SizedBox(height: 16),
+                                            LinearProgressIndicator(
+                                              value: totalToDelete > 0
+                                                  ? currentDeleted /
+                                                        totalToDelete
+                                                  : null,
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              '$currentDeleted / $totalToDelete deleted',
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  );
+                                },
+                              );
                             }
                             setState(() {
                               for (final path in oldFiles) {

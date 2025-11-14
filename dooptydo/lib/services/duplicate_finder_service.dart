@@ -1,9 +1,30 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path;
 import '../models/file_entry.dart';
 import '../models/duplicate_group.dart';
 import '../utils/app_logger.dart';
+
+/// Isolate entry for hashing a chunk of files (must be top-level for Isolate.spawn)
+void _hashChunkIsolateEntry(List<dynamic> args) async {
+  final sendPort = args[0] as SendPort;
+  final chunk = args[1] as List<FileEntry>;
+  final fullHash = args[2] as bool;
+  final hashes = <Map<String, dynamic>>[];
+  for (final file in chunk) {
+    try {
+      final fileObj = File(file.path);
+      final bytes = await fileObj.readAsBytes();
+      final bytesToHash = fullHash ? bytes : bytes.take(8192).toList();
+      final digest = sha256.convert(bytesToHash);
+      hashes.add({'hash': digest.toString()});
+    } catch (e) {
+      hashes.add({'hash': null});
+    }
+  }
+  sendPort.send(hashes);
+}
 
 class DuplicateFinderService {
   // Callback for progress updates
@@ -46,29 +67,63 @@ class DuplicateFinderService {
     return drives;
   }
 
-  /// Recursively collect all files from multiple directories
+  /// Recursively collect all files from multiple directories using isolates for parallelism
   Future<List<FileEntry>> collectFilesFromMultiplePaths(
     List<String> directoryPaths, {
     int minSize = 0,
     List<String>? fileExtensions,
   }) async {
     final allFiles = <FileEntry>[];
+    final results = <Future<List<FileEntry>>>[];
 
     for (var i = 0; i < directoryPaths.length; i++) {
       onStatusUpdate?.call(
         'Scanning ${i + 1}/${directoryPaths.length}: ${directoryPaths[i]}',
       );
-
-      final files = await collectFiles(
-        directoryPaths[i],
-        minSize: minSize,
-        fileExtensions: fileExtensions,
+      // Spawn isolates for each directory scan
+      results.add(
+        _collectFilesIsolate(directoryPaths[i], minSize, fileExtensions),
       );
+    }
+
+    final filesList = await Future.wait(results);
+    for (final files in filesList) {
       allFiles.addAll(files);
     }
 
     onStatusUpdate?.call('Found ${allFiles.length} total files');
     return allFiles;
+  }
+
+  /// Helper to run collectFiles in an isolate
+  Future<List<FileEntry>> _collectFilesIsolate(
+    String directoryPath,
+    int minSize,
+    List<String>? fileExtensions,
+  ) async {
+    final p = ReceivePort();
+    await Isolate.spawn(_collectFilesIsolateEntry, [
+      p.sendPort,
+      directoryPath,
+      minSize,
+      fileExtensions,
+    ]);
+    return await p.first as List<FileEntry>;
+  }
+
+  /// Entry point for collectFiles isolate
+  static void _collectFilesIsolateEntry(List<dynamic> args) async {
+    final sendPort = args[0] as SendPort;
+    final directoryPath = args[1] as String;
+    final minSize = args[2] as int;
+    final fileExtensions = args[3] as List<String>?;
+    final service = DuplicateFinderService();
+    final files = await service.collectFiles(
+      directoryPath,
+      minSize: minSize,
+      fileExtensions: fileExtensions,
+    );
+    sendPort.send(files);
   }
 
   /// Recursively collect all files from a directory
@@ -190,14 +245,12 @@ class DuplicateFinderService {
       'Found ${potentialDuplicates.length} potential duplicates',
     );
 
-    // Stage 2: Partial hash (first 8KB)
+    // Stage 2: Partial hash (first 8KB) - parallelized
     if (usePartialHash) {
       onStatusUpdate?.call('Computing partial hashes...');
-      for (var i = 0; i < potentialDuplicates.length; i++) {
-        final file = potentialDuplicates[i];
-        file.partialHash = await calculateFileHash(file.path, fullHash: false);
-        onProgressUpdate?.call((i + 1) / potentialDuplicates.length);
-      }
+      await _computeHashesParallel(potentialDuplicates, false, (progress) {
+        onProgressUpdate?.call(progress);
+      });
 
       // Regroup by partial hash
       final partialHashGroups = <String, List<FileEntry>>{};
@@ -224,13 +277,11 @@ class DuplicateFinderService {
       );
     }
 
-    // Stage 3: Full hash
+    // Stage 3: Full hash - parallelized
     onStatusUpdate?.call('Computing full hashes...');
-    for (var i = 0; i < potentialDuplicates.length; i++) {
-      final file = potentialDuplicates[i];
-      file.contentHash = await calculateFileHash(file.path, fullHash: true);
-      onProgressUpdate?.call((i + 1) / potentialDuplicates.length);
-    }
+    await _computeHashesParallel(potentialDuplicates, true, (progress) {
+      onProgressUpdate?.call(progress);
+    });
 
     // Final grouping by full hash
     final hashGroups = <String, List<FileEntry>>{};
@@ -265,6 +316,45 @@ class DuplicateFinderService {
     );
 
     return duplicateGroups;
+  }
+
+  /// Parallel hash computation using isolates
+  Future<void> _computeHashesParallel(
+    List<FileEntry> files,
+    bool fullHash,
+    void Function(double) onProgress,
+  ) async {
+    final chunkSize = 8; // Number of files per isolate
+    final chunks = <List<FileEntry>>[];
+    for (var i = 0; i < files.length; i += chunkSize) {
+      chunks.add(
+        files.sublist(
+          i,
+          i + chunkSize > files.length ? files.length : i + chunkSize,
+        ),
+      );
+    }
+    int completed = 0;
+    await Future.wait(
+      chunks.map((chunk) async {
+        final p = ReceivePort();
+        await Isolate.spawn(_hashChunkIsolateEntry, [
+          p.sendPort,
+          chunk,
+          fullHash,
+        ]);
+        final hashes = await p.first as List<Map<String, dynamic>>;
+        for (var i = 0; i < chunk.length; i++) {
+          if (fullHash) {
+            chunk[i].contentHash = hashes[i]['hash'] as String?;
+          } else {
+            chunk[i].partialHash = hashes[i]['hash'] as String?;
+          }
+          completed++;
+          onProgress(completed / files.length);
+        }
+      }),
+    );
   }
 
   /// Delete a file
