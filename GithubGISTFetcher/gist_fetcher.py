@@ -174,7 +174,7 @@ def create_gist(filename, content, token):
         "Accept": "application/vnd.github.v3+json"
     }
     data = {
-        "description": f"Auto-created from {filename}",
+        "description": f"{filename} - automatically added from local project",
         "public": True,
         "files": {
             filename: {
@@ -423,7 +423,7 @@ Examples:
     parser.add_argument("--remove-duplicates", action="store_true", default=REMOVE_DUPLICATES,
                         help="Delete duplicate gists from GitHub, keeping most recent (requires --token)")
     parser.add_argument("--project-dir", help="Local project directory to sync with gists")
-    parser.add_argument("--token", default=GITHUB_TOKEN, help="GitHub personal access token (required for syncing/deleting)")
+    parser.add_argument("--token", default="***REMOVED***", help="GitHub personal access token (required for syncing/deleting)")
     parser.add_argument("--force", action="store_true", help="Skip confirmation prompts for deletion and updates")
     parser.add_argument("--create-missing", action="store_true", help="Create new gists for files without existing gists")
     parser.add_argument("--file-pattern", help="File pattern for creating gists (e.g., *.dart, *.py)")
