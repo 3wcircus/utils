@@ -1,8 +1,8 @@
 import requests
+from secrets import githubPersonalAccessToken
 from datetime import datetime
 from collections import Counter
 import argparse
-import os
 from pathlib import Path
 
 # === CONFIG ===
@@ -21,9 +21,9 @@ def fetch_gists(username):
     page = 1
     while True:
         url = f"https://api.github.com/users/{username}/gists?page={page}&per_page=100"
-        response = requests.get(url)
+        response = requests.get(url, timeout=30)
         if response.status_code != 200:
-            raise Exception(f"GitHub API error: {response.status_code}")
+            raise Exception(f"GitHub API error: {response.status_code} - {response.text}")
         data = response.json()
         if not data:
             break
@@ -274,7 +274,7 @@ def sync_gists_with_local(gists, project_dir, token, force=False):
         gist_id = gist["id"]
         gist_updated = datetime.fromisoformat(gist["updated_at"].replace("Z", "+00:00"))
         
-        for filename, file_info in gist["files"].items():
+        for filename in gist["files"].keys():
             if filename in file_map:
                 local_path, local_mtime = file_map[filename]
                 local_dt = datetime.fromtimestamp(local_mtime).astimezone()
@@ -418,8 +418,8 @@ Examples:
     parser.add_argument("--username", default=USERNAME, help=f"GitHub username (default: {USERNAME})")
     parser.add_argument("--start", default=START_DATE, help=f"Start date YYYY-MM-DD (default: {START_DATE})")
     parser.add_argument("--end", default=END_DATE, help=f"End date YYYY-MM-DD (default: {END_DATE})")
-    parser.add_argument("--show-filenames", action="store_true", default=SHOW_FILENAMES, 
-                        help="Show filenames with URLs (default: False)")
+    parser.add_argument("--no-filenames", action="store_true", default=False, 
+                        help="Do not show filenames with URLs (default: show filenames)")
     parser.add_argument("--sort", choices=["date", "name"], default=SORT_BY,
                         help=f"Sort by 'date' or 'name' (default: {SORT_BY})")
     parser.add_argument("--remove-duplicates", action="store_true", default=REMOVE_DUPLICATES,
@@ -431,43 +431,51 @@ Examples:
     parser.add_argument("--file-pattern", help="File pattern for creating gists (e.g., *.dart, *.py)")
     
     args = parser.parse_args()
-    
+
+    # Use token from secrets.py if not passed in
+    if not args.token:
+        args.token = githubPersonalAccessToken
+
     all_gists = fetch_gists(args.username)
-    
+
     # Temporarily override globals for filter_gists function
-    original_show = SHOW_FILENAMES
-    original_sort = SORT_BY
-    original_remove = REMOVE_DUPLICATES
-    
-    SHOW_FILENAMES = args.show_filenames
+    SHOW_FILENAMES = not args.no_filenames
     SORT_BY = args.sort
     REMOVE_DUPLICATES = False  # We'll handle deletion separately, not in filter_gists
-    
+
     # Handle remove duplicates - actually delete from GitHub
     if args.remove_duplicates:
         duplicates_found, deleted_count = delete_duplicate_gists(
             all_gists, args.start, args.end, args.token, args.force
         )
-        
         if deleted_count > 0:
             print(f"\nDuplicate files found: {duplicates_found}, Gists deleted: {deleted_count}")
             # Re-fetch gists after deletion
             all_gists = fetch_gists(args.username)
         elif duplicates_found > 0:
             print(f"\nDuplicate files found: {duplicates_found}, No gists deleted")
-    
+
     filtered_gists, (duplicates_found_display, _) = filter_gists(all_gists, args.start, args.end)
-    
+
     # Display remaining duplicates if any (after deletion or if no deletion happened)
     if not args.remove_duplicates and duplicates_found_display > 0 and filtered_gists:
         print(f"\nDuplicate files found: {duplicates_found_display} (use --remove-duplicates to delete)")
-    
+
     # Sync with local project directory if specified
     if args.project_dir and filtered_gists:
         print("\n--- Starting sync with local files ---")
         sync_gists_with_local(filtered_gists, args.project_dir, args.token, args.force)
-    
+
     # Create missing gists if specified - use ALL gists, not filtered by date
     if args.create_missing and args.project_dir:
         print("\n--- Creating missing gists ---")
         create_missing_gists(all_gists, args.project_dir, args.token, args.file_pattern, args.force)
+
+    # Print stats at end if showing filenames or --remove-duplicates
+    if SHOW_FILENAMES or args.remove_duplicates:
+        total_gists = len(filtered_gists) if filtered_gists else 0
+        print("\n--- Gist Stats ---")
+        print(f"Total gists found in date range: {total_gists}")
+        print(f"Total duplicate files found: {duplicates_found_display}")
+        if args.remove_duplicates:
+            print(f"Total gists deleted: {deleted_count if 'deleted_count' in locals() else 0}")
