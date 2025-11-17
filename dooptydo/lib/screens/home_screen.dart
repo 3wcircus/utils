@@ -18,6 +18,16 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  String _formatDuration(Duration d) {
+    if (d.inHours > 0) {
+      return '${d.inHours}h ${d.inMinutes % 60}m ${d.inSeconds % 60}s';
+    } else if (d.inMinutes > 0) {
+      return '${d.inMinutes}m ${d.inSeconds % 60}s';
+    } else {
+      return '${d.inSeconds}s';
+    }
+  }
+
   final _finderService = DuplicateFinderService();
   final _permissionService = PermissionService();
   final _fileSizeController = TextEditingController(text: '0');
@@ -108,8 +118,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _isScanning = true;
       _progress = 0.0;
       _duplicateGroups.clear();
-      // Removed _collectedFileCount reset
     });
+    final scanStart = DateTime.now();
     try {
       final minSize = int.tryParse(_fileSizeController.text) ?? 0;
       List<String> pathsToScan;
@@ -126,10 +136,13 @@ class _HomeScreenState extends State<HomeScreen> {
         minSize: minSize * 1024,
       );
       final groups = await _finderService.findDuplicates(files);
+      final scanEnd = DateTime.now();
+      final scanDuration = scanEnd.difference(scanStart);
       setState(() {
         _duplicateGroups = groups;
         _isScanning = false;
       });
+      AppLogger.info('Scan completed in ${_formatDuration(scanDuration)}');
     } catch (e) {
       setState(() {
         _status = 'Error: $e';
