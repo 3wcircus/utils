@@ -242,6 +242,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showSettingsDialog() {
+    final chunkSizeController = TextEditingController(
+      text: _finderService.chunkSize.toString(),
+    );
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -263,6 +266,34 @@ class _HomeScreenState extends State<HomeScreen> {
                       AppLogger.info('Logging enabled');
                     }
                   },
+                ),
+                const Divider(),
+                ListTile(
+                  title: const Text('Chunk Size'),
+                  subtitle: const Text('Number of files processed per isolate'),
+                  trailing: SizedBox(
+                    width: 60,
+                    child: TextField(
+                      controller: chunkSizeController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          vertical: 8,
+                          horizontal: 8,
+                        ),
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) {
+                        final parsed = int.tryParse(value);
+                        if (parsed != null && parsed > 0) {
+                          setDialogState(() {
+                            _finderService.chunkSize = parsed;
+                          });
+                        }
+                      },
+                    ),
+                  ),
                 ),
                 const Divider(),
                 ListTile(

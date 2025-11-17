@@ -31,6 +31,9 @@ class DuplicateFinderService {
   Function(String)? onStatusUpdate;
   Function(double)? onProgressUpdate;
 
+  // Chunk size for parallel hashing
+  int chunkSize = 8;
+
   // Known directories that should be skipped (case-insensitive)
   static final List<String> _skipDirectories = [
     r'$Recycle.Bin',
@@ -324,7 +327,6 @@ class DuplicateFinderService {
     bool fullHash,
     void Function(double) onProgress,
   ) async {
-    final chunkSize = 8; // Number of files per isolate
     final chunks = <List<FileEntry>>[];
     for (var i = 0; i < files.length; i += chunkSize) {
       chunks.add(
