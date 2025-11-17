@@ -224,6 +224,7 @@ class DuplicateFinderService {
   Future<List<DuplicateGroup>> findDuplicates(
     List<FileEntry> files, {
     bool usePartialHash = true,
+    void Function(List<FileEntry> chunk, bool fullHash)? onChunkComplete,
   }) async {
     // Stage 1: Group by size
     onStatusUpdate?.call('Grouping by size...');
@@ -253,7 +254,7 @@ class DuplicateFinderService {
       onStatusUpdate?.call('Computing partial hashes...');
       await _computeHashesParallel(potentialDuplicates, false, (progress) {
         onProgressUpdate?.call(progress);
-      });
+      }, onChunkComplete: onChunkComplete);
 
       // Regroup by partial hash
       final partialHashGroups = <String, List<FileEntry>>{};
@@ -284,7 +285,7 @@ class DuplicateFinderService {
     onStatusUpdate?.call('Computing full hashes...');
     await _computeHashesParallel(potentialDuplicates, true, (progress) {
       onProgressUpdate?.call(progress);
-    });
+    }, onChunkComplete: onChunkComplete);
 
     // Final grouping by full hash
     final hashGroups = <String, List<FileEntry>>{};
@@ -321,12 +322,13 @@ class DuplicateFinderService {
     return duplicateGroups;
   }
 
-  /// Parallel hash computation using isolates
+  /// Parallel hash computation using isolates with incremental chunk reporting
   Future<void> _computeHashesParallel(
     List<FileEntry> files,
     bool fullHash,
-    void Function(double) onProgress,
-  ) async {
+    void Function(double) onProgress, {
+    void Function(List<FileEntry> chunk, bool fullHash)? onChunkComplete,
+  }) async {
     final chunks = <List<FileEntry>>[];
     for (var i = 0; i < files.length; i += chunkSize) {
       chunks.add(
@@ -354,6 +356,9 @@ class DuplicateFinderService {
           }
           completed++;
           onProgress(completed / files.length);
+        }
+        if (onChunkComplete != null) {
+          onChunkComplete(chunk, fullHash);
         }
       }),
     );

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-// ...existing code...
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../services/duplicate_finder_service.dart';
 import '../services/permission_service.dart';
 import '../models/duplicate_group.dart';
+import '../models/file_entry.dart';
 import '../widgets/duplicate_group_card.dart';
 import '../widgets/scan_controls.dart';
 import '../widgets/stats_panel.dart';
@@ -135,7 +135,34 @@ class _HomeScreenState extends State<HomeScreen> {
         pathsToScan,
         minSize: minSize * 1024,
       );
-      final groups = await _finderService.findDuplicates(files);
+      // Incremental UI update: collect duplicate groups as chunks complete
+      List<DuplicateGroup> tempGroups = [];
+      final groups = await _finderService.findDuplicates(
+        files,
+        usePartialHash: true,
+        onChunkComplete: (chunk, fullHash) {
+          if (fullHash) {
+            final hashGroups = <String, List<FileEntry>>{};
+            for (final file in files) {
+              if (file.contentHash != null) {
+                hashGroups.putIfAbsent(file.contentHash!, () => []).add(file);
+              }
+            }
+            tempGroups = hashGroups.values
+                .where((group) => group.length > 1)
+                .map(
+                  (files) => DuplicateGroup(
+                    hash: files.first.contentHash!,
+                    files: files,
+                  ),
+                )
+                .toList();
+            setState(() {
+              _duplicateGroups = List<DuplicateGroup>.from(tempGroups);
+            });
+          }
+        },
+      );
       final scanEnd = DateTime.now();
       final scanDuration = scanEnd.difference(scanStart);
       setState(() {
