@@ -13,7 +13,6 @@ SHOW_FILENAMES = True  # Set to False to only show URLs
 SORT_BY = "name"  # Options: "date" (most recent first) or "name" (alphabetical by first filename)
 REMOVE_DUPLICATES = False  # Set to True to keep only the most recently updated gist for duplicate filenames
 
-# Remove any hardcoded GitHub personal access token from this file.
 # Store secrets in a separate file (e.g., secrets.dart) and do not commit them to version control.
 
 # === FETCH GISTS ===
