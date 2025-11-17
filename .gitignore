@@ -3,3 +3,6 @@
 *_removal_list_*.txt
 *_backup_*.vpx
 *_cleaned.vpx
+secrets.dart
+secrets.py
+GithubGISTFetcher/__pycache__/
