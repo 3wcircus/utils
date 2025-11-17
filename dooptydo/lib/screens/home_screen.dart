@@ -415,10 +415,25 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildResultsPanel() {
     if (_duplicateGroups.isEmpty) {
       return Center(
-        child: Text(
-          _isScanning ? 'Scanning...' : 'No duplicates found',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
+        child: _isScanning
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Scanning...',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'This may take some time...',
+                    style: TextStyle(fontSize: 14, color: Colors.black54),
+                  ),
+                ],
+              )
+            : Text(
+                'No duplicates found',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
       );
     }
     return Column(
